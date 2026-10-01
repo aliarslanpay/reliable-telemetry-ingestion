@@ -1,0 +1,7 @@
+{
+  "language": {
+    "cpp_standard": "C++20",
+    "cmake_minimum": "3.22"
+  },
+  "dependency_pins": {}
+}

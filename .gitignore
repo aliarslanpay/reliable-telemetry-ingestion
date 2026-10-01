@@ -1,0 +1,17 @@
+/build*/
+/.venv/
+/.runtime/
+/results/
+__pycache__/
+*.pyc
+*.db
+*.db-*
+*.sqlite*
+*.log
+*.pem
+*.key
+*.crt
+.env
+.aws-sam/
+samconfig.toml
+*.tfstate*

@@ -1,0 +1,30 @@
+[
+  {
+    "event": {
+      "schema_version": 1,
+      "device_id": "sensor-a",
+      "stream_id": "0123456789abcdef0123456789abcdef",
+      "sequence": 1,
+      "timestamp_ms": 1791100000000,
+      "temperature_mc": -12345,
+      "pressure_pa": 101325,
+      "fingerprint": "9a7b492ea6ec2eeec0d174119b9cf46244c408b3fd9bc267d15f7d4b24505b62"
+    },
+    "canonical": "{\"device_id\":\"sensor-a\",\"pressure_pa\":101325,\"schema_version\":1,\"sequence\":1,\"stream_id\":\"0123456789abcdef0123456789abcdef\",\"temperature_mc\":-12345,\"timestamp_ms\":1791100000000}",
+    "sha256": "9a7b492ea6ec2eeec0d174119b9cf46244c408b3fd9bc267d15f7d4b24505b62"
+  },
+  {
+    "event": {
+      "schema_version": 1,
+      "device_id": "sensor-b",
+      "stream_id": "ffffffffffffffffffffffffffffffff",
+      "sequence": 9007199254740991,
+      "timestamp_ms": 253402300799999,
+      "temperature_mc": 200000,
+      "pressure_pa": 2000000,
+      "fingerprint": "053b59e01b4c6022421ad497febf5a3cad8b283b19e418a9a3447e4f296fdd5a"
+    },
+    "canonical": "{\"device_id\":\"sensor-b\",\"pressure_pa\":2000000,\"schema_version\":1,\"sequence\":9007199254740991,\"stream_id\":\"ffffffffffffffffffffffffffffffff\",\"temperature_mc\":200000,\"timestamp_ms\":253402300799999}",
+    "sha256": "053b59e01b4c6022421ad497febf5a3cad8b283b19e418a9a3447e4f296fdd5a"
+  }
+]
