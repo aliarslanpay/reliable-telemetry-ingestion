@@ -9,6 +9,7 @@ using Json = nlohmann::json;
 constexpr std::size_t max_event_bytes = 1024;
 constexpr std::size_t max_ack_bytes = 512;
 constexpr std::int64_t max_sequence = 9007199254740991LL;
+constexpr std::int64_t max_timestamp_ms = 253402300799999LL;
 
 struct Event {
     std::string device_id;

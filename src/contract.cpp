@@ -81,7 +81,7 @@ std::string Event::canonical() const { return data().dump(); }
 std::string Event::wire() const { auto j = data(); j["fingerprint"] = fingerprint; return j.dump(); }
 void validate_data(const Event& e) {
     identity(e.device_id, e.stream_id, e.sequence);
-    if (e.timestamp_ms < 0 || e.timestamp_ms > 253402300799999LL || e.temperature_mc < -100000 ||
+    if (e.timestamp_ms < 0 || e.timestamp_ms > max_timestamp_ms || e.temperature_mc < -100000 ||
         e.temperature_mc > 200000 || e.pressure_pa < 0 || e.pressure_pa > 2000000)
         throw std::invalid_argument("measurement outside range");
 }
@@ -91,7 +91,7 @@ Event parse_event(std::string_view s) {
              "temperature_mc", "pressure_pa", "fingerprint"});
     integer(j, "schema_version", 1, 1);
     Event e{j.at("device_id").get<std::string>(), j.at("stream_id").get<std::string>(),
-            integer(j, "sequence", 1, max_sequence), integer(j, "timestamp_ms", 0, 253402300799999LL),
+            integer(j, "sequence", 1, max_sequence), integer(j, "timestamp_ms", 0, max_timestamp_ms),
             integer(j, "temperature_mc", -100000, 200000), integer(j, "pressure_pa", 0, 2000000),
             j.at("fingerprint").get<std::string>()};
     validate_data(e);

@@ -6,3 +6,4 @@ Dependencies are installed separately, not vendored:
 | --- | --- | --- |
 | nlohmann/json | MIT | https://github.com/nlohmann/json |
 | OpenSSL 3 | Apache-2.0 | https://www.openssl.org/ |
+| SQLite | Public domain | https://sqlite.org/copyright.html |
