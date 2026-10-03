@@ -3,5 +3,17 @@
     "cpp_standard": "C++20",
     "cmake_minimum": "3.22"
   },
-  "dependency_pins": {}
+  "dependency_pins": {
+    "ingestion/requirements.txt": {
+      "paho-mqtt": "2.1.0",
+      "psycopg": "3.2.9",
+      "psycopg-binary": "3.2.9",
+      "typing-extensions": "4.16.0"
+    }
+  },
+  "compose_image_pins": {
+    "mosquitto": "2.0.22",
+    "postgresql": "16.15-bookworm",
+    "runtime_verified": false
+  }
 }

@@ -9,7 +9,7 @@ import tempfile
 import unittest
 
 MAX_TIMESTAMP = 253402300799999
-COMMANDS = ["enqueue", "status", "quarantine", "new-stream", "discard"]
+COMMANDS = ["enqueue", "status", "quarantine", "new-stream", "discard", "run"]
 GATEWAY = None
 
 
@@ -78,6 +78,51 @@ class EnqueueTests(GatewayCase):
         self.invalid("enqeue", detail="unknown command")
         self.assertFalse(self.database.exists())
 
+
+class RunTests(GatewayCase):
+    def run_options(self, *options):
+        return ("--host", "127.0.0.1", "--duration-ms", 1, *options)
+
+    def test_invalid_run_timestamp_and_series(self):
+        for first, count in [(-9223372036854775808, 1), (-1, 1),
+                             (MAX_TIMESTAMP + 1, 1), (9223372036854775807, 2),
+                             (MAX_TIMESTAMP, 2), (MAX_TIMESTAMP - 9998, 10000)]:
+            with self.subTest(first=first, count=count):
+                self.invalid("run", *self.run_options("--count", count, "--timestamp-ms", first), detail="timestamp-ms")
+
+    def test_run_valid_timestamp_boundaries(self):
+        from support import Broker
+        broker = Broker(Path(self.temp.name) / "broker")
+        broker.start()
+        self.addCleanup(broker.stop)
+        for first, count in [(0, 1), (MAX_TIMESTAMP, 1), (MAX_TIMESTAMP - 1, 2)]:
+            with self.subTest(first=first, count=count):
+                result, entries, _ = self.invoke("run", "--host", "127.0.0.1", "--port", broker.port,
+                                                "--duration-ms", 100, "--count", count, "--timestamp-ms", first)
+                self.assertEqual(result.returncode, 5, result.stderr)
+                accepted = [e["event"]["timestamp_ms"] for e in entries if e.get("kind") == "accepted"]
+                self.assertEqual(accepted, list(range(first, first + count)))
+
+    def test_port_rejects_before_narrowing(self):
+        for port in (-9223372036854775808, -4294965413, -1, 0, 65536, 4294969179, 9223372036854775807):
+            with self.subTest(port=port):
+                self.invalid("run", *self.run_options("--port", port), detail="port range")
+
+    def test_port_boundaries(self):
+        # A later timestamp error confirms the bound passed without a listener.
+        for port in (1, 65535):
+            with self.subTest(port=port):
+                self.invalid("run", *self.run_options("--port", port, "--timestamp-ms", -1), detail="timestamp-ms")
+
+    def test_window_rejects_before_narrowing(self):
+        for window in (-9223372036854775808, -4294967295, -1, 0, 65, 4294967297, 9223372036854775807):
+            with self.subTest(window=window):
+                self.invalid("run", *self.run_options("--window", window), detail="window range")
+
+    def test_window_boundaries(self):
+        for window in (1, 64):
+            with self.subTest(window=window):
+                self.invalid("run", *self.run_options("--window", window, "--timestamp-ms", -1), detail="timestamp-ms")
 
 def main():
     global GATEWAY

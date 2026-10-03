@@ -1,0 +1,7 @@
+pattern write telemetry/v1/%u/events
+pattern read telemetry/v1/%u/acks
+
+user worker-1
+topic read telemetry/v1/+/events
+topic read $share/ingestors/telemetry/v1/+/events
+topic write telemetry/v1/+/acks
