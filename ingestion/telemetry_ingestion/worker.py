@@ -25,6 +25,8 @@ def main():
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
     signal.signal(signal.SIGINT, lambda *_: stop.set())
     handoff = queue.Queue(maxsize=64)
+    callback_counts = {"dropped": 0, "invalid_transport": 0}
+    callback_lock = threading.Lock()
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=args.name, protocol=mqtt.MQTTv311)
     client.username_pw_set(os.environ["MQTT_USERNAME"], os.environ["MQTT_PASSWORD"])
     client.max_inflight_messages_set(16)
@@ -40,12 +42,15 @@ def main():
 
     def message(_, __, msg):
         if msg.retain or msg.qos != 1 or len(msg.payload) > MAX_EVENT_BYTES:
+            with callback_lock:
+                callback_counts["invalid_transport"] += 1
             return
         try:
             handoff.put_nowait((msg.topic, bytes(msg.payload)))
         except queue.Full:
             # No success ACK: the durable producer retries this identity.
-            pass
+            with callback_lock:
+                callback_counts["dropped"] += 1
 
     client.on_connect = connected
     client.on_subscribe = subscribed
@@ -54,8 +59,15 @@ def main():
     counts = {"stored": 0, "duplicate": 0, "conflict": 0, "invalid": 0, "transient": 0}
     client.connect_async(args.host, args.port, keepalive=10)
     client.loop_start()
+    next_status = time.monotonic()
     try:
         while not stop.is_set():
+            if time.monotonic() >= next_status:
+                with callback_lock:
+                    callback_snapshot = dict(callback_counts)
+                log("status", **counts, callback_dropped=callback_snapshot["dropped"],
+                    invalid_transport=callback_snapshot["invalid_transport"], handoff_depth=handoff.qsize())
+                next_status = time.monotonic() + 1
             try:
                 topic, raw = handoff.get(timeout=0.1)
             except queue.Empty:

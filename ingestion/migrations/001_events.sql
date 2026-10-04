@@ -7,3 +7,22 @@ CREATE TABLE IF NOT EXISTS events (
     stored_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     PRIMARY KEY (device_id, stream_id, sequence)
 );
+
+CREATE OR REPLACE FUNCTION reject_event_mutation() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'events are immutable; retention ends deduplication protection';
+END;
+$$;
+DROP TRIGGER IF EXISTS events_immutable ON events;
+CREATE TRIGGER events_immutable BEFORE UPDATE OR DELETE ON events
+FOR EACH ROW EXECUTE FUNCTION reject_event_mutation();
+
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'telemetry_worker') THEN
+        CREATE ROLE telemetry_worker NOLOGIN;
+    END IF;
+END $$;
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+GRANT USAGE ON SCHEMA public TO telemetry_worker;
+GRANT SELECT, INSERT ON events TO telemetry_worker;

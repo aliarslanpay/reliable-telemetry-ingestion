@@ -16,21 +16,39 @@ services:
     ports: ["127.0.0.1:15432:5432"]
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./ingestion/migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U telemetry -d telemetry"]
       interval: 2s
       timeout: 2s
       retries: 15
+  init-db:
+    build: {context: ., dockerfile: local/Dockerfile}
+    command: ["python", "-m", "telemetry_ingestion.migrate"]
+    environment:
+      DATABASE_ADMIN_URL: postgresql://telemetry:${POSTGRES_PASSWORD}@postgres/telemetry
+      WORKER_DB_PASSWORD: ${WORKER_DB_PASSWORD:?Run scripts/local_setup.py first}
+    depends_on:
+      postgres: {condition: service_healthy}
   worker-1:
     build: {context: ., dockerfile: local/Dockerfile}
     environment:
       MQTT_HOST: broker
       MQTT_USERNAME: worker-1
       MQTT_PASSWORD: ${WORKER1_PASSWORD:?Run scripts/local_setup.py first}
-      DATABASE_URL: postgresql://telemetry:${POSTGRES_PASSWORD}@postgres/telemetry
+      DATABASE_URL: postgresql://telemetry_worker:${WORKER_DB_PASSWORD}@postgres/telemetry
     depends_on:
-      postgres: {condition: service_healthy}
+      init-db: {condition: service_completed_successfully}
+      broker: {condition: service_started}
+  worker-2:
+    build: {context: ., dockerfile: local/Dockerfile}
+    command: ["python", "-m", "telemetry_ingestion.worker", "--name", "worker-2"]
+    environment:
+      MQTT_HOST: broker
+      MQTT_USERNAME: worker-2
+      MQTT_PASSWORD: ${WORKER2_PASSWORD:?Run scripts/local_setup.py first}
+      DATABASE_URL: postgresql://telemetry_worker:${WORKER_DB_PASSWORD}@postgres/telemetry
+    depends_on:
+      init-db: {condition: service_completed_successfully}
       broker: {condition: service_started}
 volumes:
   pgdata:

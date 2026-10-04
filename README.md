@@ -49,6 +49,8 @@ docker compose down -v
 The worker inserts an immutable event and publishes `stored` after PostgreSQL
 COMMIT. A repeated identical delivery receives `duplicate`. A database error
 produces no success ACK. See [delivery ownership and limits](docs/DELIVERY.md).
+Two independent workers share the event subscription and arbitrate through the
+database primary key; see [database and query commands](docs/DATABASE.md).
 Use the native PostgreSQL tests to exercise database durability and queries.
 
 The transport-only check uses a real isolated Mosquitto broker and deliberately
