@@ -126,6 +126,7 @@ int run_service(Outbox& outbox,const RunConfig& c,volatile std::sig_atomic_t& st
             auto s=outbox.status();s["kind"]="status";s["connected"]=bridge.ready();s["accepted"]=accepted;s["rejected"]=rejected;
             s["retries"]=retries;s["acknowledged"]=acknowledged;s["terminal_received"]=terminal_count;
             s["ignored_acks"]=ignored_acks;s["callback_dropped"]=bridge.dropped();s["wire_outstanding"]=bridge.outstanding();
+            s["mqtt_transport_code"]=bridge.transport_code();
             log(s);next_status=now+std::chrono::seconds(1);
         }
         if(input_done && !c.stay && flights.empty() && outbox.status()["pending"]==0) break;

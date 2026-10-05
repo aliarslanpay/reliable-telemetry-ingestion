@@ -1,6 +1,7 @@
 #pragma once
 #include "telemetry/handoff.hpp"
 #include <atomic>
+#include <chrono>
 #include <string>
 #include <mosquitto.h>
 
@@ -19,6 +20,7 @@ struct MqttConfig {
 class MqttBridge {
     mosquitto* client_=nullptr;
     bool loop_started_=false;
+    std::chrono::steady_clock::time_point next_connect_{};
     const MqttConfig config_;
     const std::string event_topic_;
     const std::string ack_topic_;
@@ -27,6 +29,8 @@ class MqttBridge {
     std::atomic<bool> ready_{false};
     std::atomic<unsigned> outstanding_{0};
     std::atomic<unsigned long long> dropped_{0};
+    std::atomic<int> transport_code_{0};
+    void start_connection();
     static void connected(mosquitto*,void*,int) noexcept;
     static void disconnected(mosquitto*,void*,int) noexcept;
     static void subscribed(mosquitto*,void*,int,int,const int*) noexcept;
@@ -43,5 +47,6 @@ public:
     bool ready() const {return ready_.load(std::memory_order_acquire);}
     unsigned long long dropped() const {return dropped_.load();}
     unsigned outstanding() const {return outstanding_.load();}
+    int transport_code() const {return transport_code_.load();}
 };
 } // namespace telemetry

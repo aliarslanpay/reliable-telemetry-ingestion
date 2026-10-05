@@ -31,8 +31,7 @@ MqttBridge::MqttBridge(MqttConfig config) : config_(std::move(config)),
         mosquitto_publish_callback_set(client_,published);
         mosquitto_message_callback_set(client_,message);
         must(mosquitto_reconnect_delay_set(client_,1,4,true));
-        must(mosquitto_connect_async(client_,config_.host.c_str(),config_.port,10));
-        must(mosquitto_loop_start(client_)); loop_started_=true;
+        start_connection();
     } catch(...) {if(client_) mosquitto_destroy(client_);mosquitto_lib_cleanup();throw;}
 }
 MqttBridge::~MqttBridge() {
@@ -74,10 +73,21 @@ void MqttBridge::message(mosquitto*,void* context,const mosquitto_message* msg) 
     } catch(...) {++self.dropped_;}
 }
 void MqttBridge::poll_subscription() {
+    if(!loop_started_ && std::chrono::steady_clock::now()>=next_connect_) start_connection();
     if(subscribe_.exchange(false)) {
         const int rc=mosquitto_subscribe(client_,nullptr,ack_topic_.c_str(),1);
         if(rc!=MOSQ_ERR_SUCCESS) subscribe_.store(true);
     }
+}
+void MqttBridge::start_connection() {
+    const int rc=mosquitto_connect_async(client_,config_.host.c_str(),config_.port,10);
+    transport_code_.store(rc);
+    if(rc==MOSQ_ERR_SUCCESS) {
+        must(mosquitto_loop_start(client_)); loop_started_=true;
+    } else if(rc==MOSQ_ERR_ERRNO || rc==MOSQ_ERR_EAI) {
+        // No network thread exists yet; persist input while bounded startup retries run.
+        next_connect_=std::chrono::steady_clock::now()+std::chrono::seconds(1);
+    } else must(rc);
 }
 bool MqttBridge::send(const std::string& payload) {
     if(payload.empty() || payload.size()>max_event_bytes || !ready()) return false;

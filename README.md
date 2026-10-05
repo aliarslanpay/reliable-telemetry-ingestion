@@ -58,4 +58,9 @@ injected ACKs; it does not claim PostgreSQL verification:
 
 ```sh
 .venv/bin/python tests/mqtt_smoke.py --gateway build/gateway
+.venv/bin/python tests/broker_faults.py --gateway build/gateway
 ```
+
+The complete native runner is `scripts/verify_local.sh`; see
+[verification scope](docs/TESTING.md). Use a normal user for
+PostgreSQL; initdb refuses root.

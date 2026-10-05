@@ -20,7 +20,17 @@ def main():
     parser.add_argument("--host", default=os.getenv("MQTT_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.getenv("MQTT_PORT", "1883")))
     parser.add_argument("--name", default="worker-1")
+    parser.add_argument("--test-hooks", type=str)
+    parser.add_argument("--test-pause-before-commit", action="store_true")
+    parser.add_argument("--test-after-commit", choices=("normal", "suppress", "crash"), default="normal")
+    parser.add_argument("--test-delay-ms", type=int, default=0)
     args = parser.parse_args()
+    if not args.test_hooks and (args.test_pause_before_commit or args.test_after_commit != "normal" or args.test_delay_ms):
+        parser.error("Fault hooks require --test-hooks DIRECTORY; keep them out of the normal demo")
+    hooks = None
+    if args.test_hooks:
+        from .test_hooks import Hooks
+        hooks = Hooks(args.test_hooks, args.test_pause_before_commit, args.test_after_commit, args.test_delay_ms)
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
     signal.signal(signal.SIGINT, lambda *_: stop.set())
@@ -80,8 +90,11 @@ def main():
                 ack = invalid_ack(raw, topic.split("/")[2] if len(topic.split("/")) == 4 else "")
             else:
                 try:
-                    result = store.store(event)
+                    result = store.store(event, before_commit=hooks.before_commit if hooks else None)
                     counts[result] += 1
+                    if hooks and not hooks.after_commit(event):
+                        log("test_ack_suppressed")
+                        continue
                     ack = acknowledgement(event, result)
                     log("persistence", result=result, **{k:event[k] for k in ("device_id", "stream_id", "sequence")})
                 except Exception as exc:

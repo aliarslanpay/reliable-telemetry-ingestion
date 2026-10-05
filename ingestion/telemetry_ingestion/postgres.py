@@ -21,7 +21,7 @@ class PgStore:
                 options="-c statement_timeout=1500 -c lock_timeout=1000 -c idle_in_transaction_session_timeout=2000")
         return self.connection
 
-    def store(self, event):
+    def store(self, event, before_commit=None):
         conn = self.connect()
         key = tuple(event[k] for k in ("device_id", "stream_id", "sequence"))
         data = json.loads(canonical(event))
@@ -39,4 +39,6 @@ class PgStore:
                     if original is None:
                         raise RuntimeError("deduplication identity disappeared")
                     result = "duplicate" if original == (event["fingerprint"], data) else "conflict"
+            if before_commit is not None:
+                before_commit(event)
         return result
