@@ -31,6 +31,7 @@ public:
         return false;
     }
     void done() { if (row()) throw std::runtime_error("unexpected query row"); }
+    void finish() { const int rc=sqlite3_reset(stmt_); if(rc!=SQLITE_OK) fail(db_,rc); }
     std::int64_t number(int col) const { return sqlite3_column_int64(stmt_, col); }
     std::string text(int col) const {
         const auto* s = sqlite3_column_text(stmt_, col);
@@ -96,6 +97,7 @@ Outbox::Outbox(const std::string& path, std::string device, std::optional<Limits
             insert.number(3, limits_.items); insert.number(4, limits_.payload_bytes);
             insert.number(5, limits_.quarantine); insert.number(6, limits_.database_pages); insert.done();
         }
+        read.finish();
         tx.commit();
         exec(db_, "PRAGMA max_page_count=" + std::to_string(limits_.database_pages));
     } catch (...) { sqlite3_close(db_); db_ = nullptr; throw; }
@@ -109,13 +111,17 @@ EnqueueResult Outbox::enqueue(std::int64_t timestamp, std::int64_t temperature, 
         Statement meta(db_, "SELECT stream,next_seq FROM meta WHERE singleton=1");
         if (!meta.row()) throw std::runtime_error("outbox metadata missing");
         e.stream_id = meta.text(0); e.sequence = meta.number(1);
+        meta.finish();
         validate_data(e);
         e.fingerprint = sha256(e.canonical());
         const std::string wire = e.wire();
         Statement capacity(db_, "SELECT count(*),coalesce(sum(length(CAST(wire AS BLOB))),0) FROM outbox");
         capacity.row();
-        if (capacity.number(0) >= limits_.items) return {false, "item_capacity", std::nullopt};
-        if (capacity.number(1) + static_cast<std::int64_t>(wire.size()) > limits_.payload_bytes)
+        const bool item_full=capacity.number(0)>=limits_.items;
+        const bool bytes_full=capacity.number(1)+static_cast<std::int64_t>(wire.size())>limits_.payload_bytes;
+        capacity.finish();
+        if (item_full) return {false, "item_capacity", std::nullopt};
+        if (bytes_full)
             return {false, "payload_capacity", std::nullopt};
         Statement insert(db_, "INSERT INTO outbox(stream,seq,wire,fingerprint,enqueued_ms,state) VALUES(?,?,?,?,?,'pending')");
         insert.text(1, e.stream_id); insert.number(2, e.sequence); insert.text(3, wire);
@@ -143,6 +149,7 @@ AckResult Outbox::apply_ack(const Ack& ack) {
     Statement row(db_, "SELECT fingerprint,state FROM outbox WHERE stream=? AND seq=?");
     row.text(1, ack.stream_id); row.number(2, ack.sequence);
     if (!row.row() || row.text(0) != ack.fingerprint || row.text(1) != "pending") return AckResult::ignored;
+    row.finish();
     if (ack.result == "stored" || ack.result == "duplicate") {
         Statement del(db_, "DELETE FROM outbox WHERE stream=? AND seq=?");
         del.text(1, ack.stream_id); del.number(2, ack.sequence); del.done();
@@ -155,6 +162,7 @@ AckResult Outbox::apply_ack(const Ack& ack) {
     if (ack.result != "invalid" && ack.result != "conflict") return AckResult::ignored;
     Statement count(db_, "SELECT count(*) FROM outbox WHERE state='quarantine'"); count.row();
     const bool full = count.number(0) >= limits_.quarantine;
+    count.finish();
     Statement update(db_, "UPDATE outbox SET state=?,reason=? WHERE stream=? AND seq=?");
     update.text(1, full ? "blocked" : "quarantine"); update.text(2, ack.result);
     update.text(3, ack.stream_id); update.number(4, ack.sequence); update.done(); tx.commit();

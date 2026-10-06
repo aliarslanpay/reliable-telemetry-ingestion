@@ -22,6 +22,8 @@ environment capability is unavailable.
 | `tests/broker_faults.py` | Reconnect, crash, retry identity, malformed/mismatched ACKs, capacity and shutdown |
 | `tests/integration.py` | Eleven real MQTT/PostgreSQL fault groups, including commit-before-ACK, post-commit crash, two workers, outages, overload and ACLs |
 | `tests/postgres_checks.py` | Independent-process insertion arbitration, conflict preservation, role restrictions and indexed range queries |
+| `tests/load.py` | Healthy profiles, slow ingestion and a backlog alert/recovery drill |
+| `scripts/storage_probe.py` | Durable SQLite enqueue cost and sampled RSS/database/WAL sizes |
 
 Transport tests inject ACKs through an authorized publisher; PostgreSQL tests
 establish backend durability. A pre-commit hook checks that no row or success ACK

@@ -9,7 +9,7 @@ import tempfile
 import unittest
 
 MAX_TIMESTAMP = 253402300799999
-COMMANDS = ["enqueue", "status", "quarantine", "new-stream", "discard", "run"]
+COMMANDS = ["enqueue", "status", "quarantine", "new-stream", "discard", "run", "version"]
 GATEWAY = None
 
 

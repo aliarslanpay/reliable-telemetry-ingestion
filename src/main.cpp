@@ -9,6 +9,7 @@
 #include <iostream>
 #include <map>
 #include <set>
+#include <openssl/crypto.h>
 #include <sys/file.h>
 #include <unistd.h>
 
@@ -59,6 +60,8 @@ void validate_options(const std::string &command,
         allowed.insert("limit");
     else if (command == "discard")
         allowed.insert({"stream", "sequence"});
+    else if (command == "version")
+        allowed.clear();
     else if (command != "status" && command != "new-stream")
         throw std::invalid_argument("unknown command");
     for (const auto &[name, value] : options) {
@@ -98,6 +101,21 @@ int main(int argc, char **argv) {
         const std::string command = argv[1];
         auto o = options(argc, argv);
         validate_options(command, o);
+        if (command == "version") {
+            int major = 0, minor = 0, patch = 0;
+            mosquitto_lib_version(&major, &minor, &patch);
+            std::cout << Json{{"compiler", __VERSION__},
+                              {"sqlite", sqlite3_libversion()},
+                              {"openssl", OpenSSL_version(OPENSSL_VERSION)},
+                              {"libmosquitto", std::to_string(major) + "." + std::to_string(minor) +
+                                                   "." + std::to_string(patch)},
+                              {"json", std::to_string(NLOHMANN_JSON_VERSION_MAJOR) + "." +
+                                           std::to_string(NLOHMANN_JSON_VERSION_MINOR) + "." +
+                                           std::to_string(NLOHMANN_JSON_VERSION_PATCH)}}
+                             .dump()
+                      << '\n';
+            return 0;
+        }
 
         std::optional<telemetry::Limits> limits;
         if (o.contains("max-items") || o.contains("max-bytes") || o.contains("max-quarantine") ||

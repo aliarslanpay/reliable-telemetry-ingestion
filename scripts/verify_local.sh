@@ -27,3 +27,5 @@ else
   ctest --test-dir build-tsan -R '^handoff$' --output-on-failure
 fi
 timeout 200s "$PYTHON_BIN" tests/integration.py --gateway build/gateway
+timeout 200s "$PYTHON_BIN" tests/load.py --gateway build/gateway --count 200
+"$PYTHON_BIN" scripts/storage_probe.py --gateway build/gateway
