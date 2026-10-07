@@ -1,0 +1,55 @@
+name: Verify gateway and ingestion
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  local:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      AWS_EC2_METADATA_DISABLED: 'true'
+      SAM_CLI_TELEMETRY: '0'
+      TELEMETRY_TSAN_NO_ASLR: '1'
+    steps:
+      - uses: actions/checkout@v6.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6.0.0
+        with:
+          python-version: '3.12.14'
+          cache: pip
+          cache-dependency-path: |
+            ingestion/requirements.txt
+            ingestion/requirements-cloud.txt
+            cloud/requirements-tools.txt
+      - name: Native broker/database and C++ prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++-13 cmake libssl-dev libsqlite3-dev nlohmann-json3-dev libmosquitto-dev mosquitto mosquitto-clients postgresql-16
+          python3 -m venv .venv
+          .venv/bin/pip install -r ingestion/requirements.txt -r ingestion/requirements-cloud.txt -r cloud/requirements-tools.txt
+          .venv/bin/pip check
+      - name: Tracked source guard
+        run: .venv/bin/python scripts/check_tracked.py
+      - name: Host, sanitizers, real broker/PostgreSQL, measurements and drill
+        run: scripts/verify_local.sh
+      - name: Offline cloud checks
+        run: |
+          PYTHONPATH=ingestion .venv/bin/python tests/cloud_unit.py
+          PYTHONPATH=ingestion .venv/bin/python tests/cloud_resources_unit.py
+          .venv/bin/python tests/cloud_teardown_unit.py
+          .venv/bin/sam validate --lint -t cloud/template.yaml --region eu-central-1
+          .venv/bin/sam build -t cloud/template.yaml --build-dir .aws-sam/build --region eu-central-1
+      - uses: actions/upload-artifact@v6.0.0
+        if: always()
+        with:
+          name: verification-results
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            results/
+            build/Testing/Temporary/LastTest.log
+            build-asan/Testing/Temporary/LastTest.log
+            build-tsan/Testing/Temporary/LastTest.log

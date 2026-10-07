@@ -1,9 +1,9 @@
 # Testing
 
-Install the native prerequisites listed in README and create `.venv` with
-`ingestion/requirements.txt`. Run the suite on Ubuntu 24.04 as a normal user:
+Run the native suite on Ubuntu 24.04 as a normal user:
 
 ```sh
+scripts/bootstrap_ubuntu.sh
 env -u PYTHONPATH -u PYTHONHOME scripts/verify_local.sh
 ```
 
@@ -63,5 +63,9 @@ application ACKs, duplicate/conflict arbitration, a Lambda error alarm and failu
 destination. Read-only teardown checks query the recorded resources after cleanup.
 IoT Rule dispatch-error injection is outside that run's scope.
 
-Hosted CI execution, Compose runtime, host power loss and sustained production
-loads require separate execution. Live AWS results are pending.
+`.github/workflows/verify.yml` runs native tests, sanitizers, measurements and
+offline cloud checks on Ubuntu 24.04. Hosted CI execution, Compose runtime, host
+power loss and sustained production loads require separate execution.
+
+Live AWS results are pending. Local test output describes each executed check;
+blocked checks are not successful checks.

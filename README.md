@@ -68,3 +68,6 @@ PostgreSQL; initdb refuses root.
 Use `python3 scripts/telemetry_status.py status --db .runtime/sensor-a.db` for
 read-only backlog and file-size diagnostics. See the [runbook](docs/RUNBOOK.md)
 and [measurement boundaries](docs/MEASUREMENTS.md).
+
+The GitHub workflow configures real native-service verification and offline SAM
+checks. Hosted CI and AWS deployment have not been run.
