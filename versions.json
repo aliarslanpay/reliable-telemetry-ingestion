@@ -9,11 +9,27 @@
       "psycopg": "3.2.9",
       "psycopg-binary": "3.2.9",
       "typing-extensions": "4.16.0"
+    },
+    "ingestion/requirements-cloud.txt": {
+      "boto3": "1.40.45",
+      "botocore": "1.40.76",
+      "jmespath": "1.0.1",
+      "s3transfer": "0.14.0",
+      "python-dateutil": "2.9.0.post0",
+      "six": "1.17.0",
+      "urllib3": "2.8.0"
+    },
+    "cloud/requirements-tools.txt": {
+      "aws-sam-cli": "1.145.1",
+      "cfn-lint": "1.40.1"
     }
   },
   "compose_image_pins": {
     "mosquitto": "2.0.22",
     "postgresql": "16.15-bookworm",
     "runtime_verified": false
+  },
+  "aws": {
+    "region": "eu-central-1"
   }
 }

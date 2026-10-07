@@ -1,0 +1,224 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Durable MQTT telemetry ingestion with DynamoDB and bounded failure diagnostics.
+Parameters:
+  DeploymentId:
+    Type: String
+    AllowedPattern: '[a-f0-9]{32}'
+    Description: Deployment ownership identifier from the private resource manifest.
+  ProjectName:
+    Type: String
+    Default: telemetry_demo
+    AllowedPattern: '[a-z][a-z0-9_]{2,20}'
+  DeviceA:
+    Type: String
+    Default: sensor-a
+    AllowedPattern: '[a-z0-9][a-z0-9_-]{0,31}'
+  DeviceB:
+    Type: String
+    Default: sensor-b
+    AllowedPattern: '[a-z0-9][a-z0-9_-]{0,31}'
+  IotDataEndpoint:
+    Type: String
+    AllowedPattern: '[a-zA-Z0-9.-]+\.iot\.eu-central-1\.amazonaws\.com'
+Resources:
+  EventTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      TableName: !Sub '${ProjectName}_events'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - {AttributeName: pk, AttributeType: S}
+        - {AttributeName: sk, AttributeType: S}
+      KeySchema:
+        - {AttributeName: pk, KeyType: HASH}
+        - {AttributeName: sk, KeyType: RANGE}
+  FailureQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${ProjectName}_failures'
+      MessageRetentionPeriod: 3600
+  LambdaLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}_ingest'
+      RetentionInDays: 1
+  RuleErrorLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/iot/${ProjectName}_errors'
+      RetentionInDays: 1
+  FunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - {Effect: Allow, Principal: {Service: lambda.amazonaws.com}, Action: 'sts:AssumeRole'}
+      Policies:
+        - PolicyName: telemetry
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ['dynamodb:PutItem', 'dynamodb:GetItem', 'dynamodb:Query']
+                Resource: !GetAtt EventTable.Arn
+                Condition:
+                  ForAllValues:StringLike:
+                    dynamodb:LeadingKeys: [!Sub '${DeviceA}#*', !Sub '${DeviceB}#*']
+              - Effect: Allow
+                Action: 'iot:Publish'
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:topic/telemetry/v1/${DeviceA}/acks'
+                  - !Sub 'arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:topic/telemetry/v1/${DeviceB}/acks'
+              - Effect: Allow
+                Action: ['logs:CreateLogStream', 'logs:PutLogEvents']
+                Resource: !GetAtt LambdaLogs.Arn
+              - Effect: Allow
+                Action: 'sqs:SendMessage'
+                Resource: !GetAtt FailureQueue.Arn
+  IngestFunction:
+    Type: AWS::Serverless::Function
+    Metadata: {BuildMethod: makefile}
+    Properties:
+      FunctionName: !Sub '${ProjectName}_ingest'
+      CodeUri: ../ingestion/
+      Handler: telemetry_ingestion.aws_handler.handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 128
+      Timeout: 10
+      Role: !GetAtt FunctionRole.Arn
+      Environment:
+        Variables:
+          EVENT_TABLE: !Ref EventTable
+          IOT_DATA_ENDPOINT: !Ref IotDataEndpoint
+          ALLOWED_DEVICES: !Sub '${DeviceA},${DeviceB}'
+  AsyncConfig:
+    Type: AWS::Lambda::EventInvokeConfig
+    Properties:
+      FunctionName: !Ref IngestFunction
+      Qualifier: '$LATEST'
+      MaximumEventAgeInSeconds: 60
+      MaximumRetryAttempts: 2
+      DestinationConfig:
+        OnFailure: {Destination: !GetAtt FailureQueue.Arn}
+  RuleLogRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: iot.amazonaws.com}
+            Action: 'sts:AssumeRole'
+            Condition:
+              StringEquals: {aws:SourceAccount: !Ref 'AWS::AccountId'}
+              ArnLike: {aws:SourceArn: !Sub 'arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:rule/${ProjectName}_ingest'}
+      Policies:
+        - PolicyName: rule-errors
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ['logs:CreateLogStream', 'logs:PutLogEvents']
+                Resource: !GetAtt RuleErrorLogs.Arn
+  IngestRule:
+    Type: AWS::IoT::TopicRule
+    Properties:
+      RuleName: !Sub '${ProjectName}_ingest'
+      TopicRulePayload:
+        AwsIotSqlVersion: '2016-03-23'
+        Sql: !Sub "SELECT encode(*, 'base64') AS event_b64, topic(3) AS authorized_device FROM 'telemetry/v1/+/events' WHERE topic(3) = '${DeviceA}' OR topic(3) = '${DeviceB}'"
+        RuleDisabled: false
+        Actions:
+          - Lambda: {FunctionArn: !GetAtt IngestFunction.Arn}
+        ErrorAction:
+          CloudwatchLogs:
+            LogGroupName: !Ref RuleErrorLogs
+            RoleArn: !GetAtt RuleLogRole.Arn
+  InvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref IngestFunction
+      Principal: iot.amazonaws.com
+      SourceArn: !GetAtt IngestRule.Arn
+      SourceAccount: !Ref 'AWS::AccountId'
+  ErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}_lambda_errors'
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions: [{Name: FunctionName, Value: !Ref IngestFunction}]
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+  ThingA:
+    Type: AWS::IoT::Thing
+    Properties: {ThingName: !Ref DeviceA}
+  ThingB:
+    Type: AWS::IoT::Thing
+    Properties: {ThingName: !Ref DeviceB}
+  DeviceAPolicy:
+    Type: AWS::IoT::Policy
+    Properties:
+      PolicyName: !Sub '${ProjectName}_device_a'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: iot:Connect
+            Resource: !Sub 'arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:client/${DeviceA}'
+            Condition: {Bool: {iot:Connection.Thing.IsAttached: 'true'}}
+          - Effect: Allow
+            Action: iot:Publish
+            Resource: !Sub 'arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:topic/telemetry/v1/${DeviceA}/events'
+          - Effect: Allow
+            Action: iot:Subscribe
+            Resource: !Sub 'arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:topicfilter/telemetry/v1/${DeviceA}/acks'
+          - Effect: Allow
+            Action: iot:Receive
+            Resource: !Sub 'arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:topic/telemetry/v1/${DeviceA}/acks'
+  DeviceBPolicy:
+    Type: AWS::IoT::Policy
+    Properties:
+      PolicyName: !Sub '${ProjectName}_device_b'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: iot:Connect
+            Resource: !Sub 'arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:client/${DeviceB}'
+            Condition: {Bool: {iot:Connection.Thing.IsAttached: 'true'}}
+          - Effect: Allow
+            Action: iot:Publish
+            Resource: !Sub 'arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:topic/telemetry/v1/${DeviceB}/events'
+          - Effect: Allow
+            Action: iot:Subscribe
+            Resource: !Sub 'arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:topicfilter/telemetry/v1/${DeviceB}/acks'
+          - Effect: Allow
+            Action: iot:Receive
+            Resource: !Sub 'arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:topic/telemetry/v1/${DeviceB}/acks'
+Outputs:
+  DeploymentId: {Value: !Ref DeploymentId}
+  ProjectName: {Value: !Ref ProjectName}
+  StackId: {Value: !Ref 'AWS::StackId'}
+  TableName: {Value: !Ref EventTable}
+  FunctionName: {Value: !Ref IngestFunction}
+  RuleName: {Value: !Ref IngestRule}
+  Endpoint: {Value: !Ref IotDataEndpoint}
+  DeviceAName: {Value: !Ref ThingA}
+  DeviceBName: {Value: !Ref ThingB}
+  DeviceAPolicyName: {Value: !Ref DeviceAPolicy}
+  DeviceBPolicyName: {Value: !Ref DeviceBPolicy}
+  AlarmName: {Value: !Ref ErrorAlarm}
+  FailureQueueUrl: {Value: !Ref FailureQueue}
+  RuleErrorLogGroup: {Value: !Ref RuleErrorLogs}
+  LambdaLogGroup: {Value: !Ref LambdaLogs}

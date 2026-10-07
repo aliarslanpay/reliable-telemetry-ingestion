@@ -24,6 +24,9 @@ environment capability is unavailable.
 | `tests/postgres_checks.py` | Independent-process insertion arbitration, conflict preservation, role restrictions and indexed range queries |
 | `tests/load.py` | Healthy profiles, slow ingestion and a backlog alert/recovery drill |
 | `scripts/storage_probe.py` | Durable SQLite enqueue cost and sampled RSS/database/WAL sizes |
+| `tests/cloud_unit.py` | DynamoDB conditional writes, duplicate/conflict semantics and Lambda validation using SDK models |
+| `tests/cloud_resources_unit.py` | Recorded ownership and lifecycle rejection before destructive SDK calls |
+| `tests/cloud_teardown_unit.py` | Bucket identity, paginated rule absence and rejection of API errors |
 
 Transport tests inject ACKs through an authorized publisher; PostgreSQL tests
 establish backend durability. A pre-commit hook checks that no row or success ACK
@@ -51,8 +54,14 @@ env -u PYTHONPATH -u PYTHONHOME TELEMETRY_TSAN_NO_ASLR=1 scripts/verify_local.sh
 
 It leaves race reporting and system-wide ASLR settings unchanged.
 
-## Limits
+## Cloud and CI
 
-Process SIGKILL/restart checks do not establish host power-loss behavior.
-Compose runtime and sustained production loads require separate execution.
-Blocked checks are not successful checks.
+The [AWS runbook](../cloud/README.md) provides offline SDK tests and SAM lint/build,
+then a separate bounded live deployment. Live checks exercise mutual TLS,
+cross-device publish/subscribe denial, IoT Rule dispatch, DynamoDB originals,
+application ACKs, duplicate/conflict arbitration, a Lambda error alarm and failure
+destination. Read-only teardown checks query the recorded resources after cleanup.
+IoT Rule dispatch-error injection is outside that run's scope.
+
+Hosted CI execution, Compose runtime, host power loss and sustained production
+loads require separate execution. Live AWS results are pending.

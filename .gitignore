@@ -1,5 +1,6 @@
 /build*/
 /.venv/
+/.venv-cloud/
 /.runtime/
 /results/
 __pycache__/
