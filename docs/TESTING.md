@@ -67,5 +67,6 @@ IoT Rule dispatch-error injection is outside that run's scope.
 offline cloud checks on Ubuntu 24.04. Hosted CI execution, Compose runtime, host
 power loss and sustained production loads require separate execution.
 
-Live AWS results are pending. Local test output describes each executed check;
-blocked checks are not successful checks.
+The bounded AWS run is recorded in [live results](results/aws-live.json) and
+[teardown results](results/aws-teardown.json). Local test output describes each
+executed check; blocked checks are not successful checks.

@@ -1,0 +1,17 @@
+{
+  "status": "passed",
+  "timestamp": "2026-10-08T12:11:45.868230+00:00",
+  "region": "eu-central-1",
+  "sample_count": 20,
+  "device_count": 2,
+  "end_to_end": "passed",
+  "application_acknowledgements": "passed",
+  "mutual_tls": "passed",
+  "device_isolation": "passed",
+  "conditional_writes": "passed",
+  "lambda_error_alarm": "passed",
+  "failure_destination": "passed",
+  "lambda_log_events": 20,
+  "rule_error_log_events": 0,
+  "rule_dispatch_error_injection": "not_run"
+}

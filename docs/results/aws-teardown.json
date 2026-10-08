@@ -1,0 +1,86 @@
+{
+  "status": "passed",
+  "timestamp": "2026-10-08T12:13:36.201523+00:00",
+  "region": "eu-central-1",
+  "stack_resources": 15,
+  "external_certificates": 2,
+  "artifact_buckets": 1,
+  "checks": [
+    {
+      "check": "recorded stack deleted",
+      "status": "passed"
+    },
+    {
+      "check": "stack name has no active replacement",
+      "status": "passed"
+    },
+    {
+      "check": "all 15 recorded stack resources DELETE_COMPLETE",
+      "status": "passed"
+    },
+    {
+      "check": "artifact bucket absent",
+      "status": "passed"
+    },
+    {
+      "check": "device certificate 1 absent",
+      "status": "passed"
+    },
+    {
+      "check": "device certificate 2 absent",
+      "status": "passed"
+    },
+    {
+      "check": "DeviceAPolicy absent",
+      "status": "passed"
+    },
+    {
+      "check": "DeviceBPolicy absent",
+      "status": "passed"
+    },
+    {
+      "check": "ErrorAlarm absent",
+      "status": "passed"
+    },
+    {
+      "check": "EventTable absent",
+      "status": "passed"
+    },
+    {
+      "check": "FailureQueue absent",
+      "status": "passed"
+    },
+    {
+      "check": "FunctionRole absent",
+      "status": "passed"
+    },
+    {
+      "check": "IngestFunction absent",
+      "status": "passed"
+    },
+    {
+      "check": "IngestRule absent",
+      "status": "passed"
+    },
+    {
+      "check": "LambdaLogs absent",
+      "status": "passed"
+    },
+    {
+      "check": "RuleErrorLogs absent",
+      "status": "passed"
+    },
+    {
+      "check": "RuleLogRole absent",
+      "status": "passed"
+    },
+    {
+      "check": "ThingA absent",
+      "status": "passed"
+    },
+    {
+      "check": "ThingB absent",
+      "status": "passed"
+    }
+  ]
+}

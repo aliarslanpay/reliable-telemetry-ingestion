@@ -103,9 +103,9 @@ Errors alarm, an asynchronous Lambda failure destination and short log retention
 Cleanup checks the account, region, registered StackId and recorded resource
 ownership before deleting the deployment.
 
-The [AWS runbook](cloud/README.md) covers a bounded Frankfurt deployment with two
-synthetic devices, mutual TLS, topic isolation, storage acknowledgements,
-duplicate/conflict handling, Lambda failures and independent teardown checks.
-Offline SDK tests and SAM lint/build exercise the adapter and infrastructure
-without deploying. Live results are pending; no AWS deployment result is recorded
-in this source state.
+A bounded deployment in `eu-central-1` exercised the AWS IoT Core → Lambda →
+DynamoDB path with synthetic devices. The run covered mutual TLS, cross-device
+topic isolation, conditional writes, application acknowledgements, Lambda failure
+handling and resource teardown. See [live results](docs/results/aws-live.json),
+[teardown results](docs/results/aws-teardown.json) and the
+[AWS runbook](cloud/README.md).
