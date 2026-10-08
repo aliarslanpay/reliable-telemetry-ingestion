@@ -1,73 +1,111 @@
 # Reliable telemetry ingestion
 
-A Linux C++ gateway and ingestion service for synthetic sensor events. The wire
-contract uses stable event identities and content fingerprints so a backend can
-distinguish a retry from a conflicting delivery.
+A C++20 Linux gateway stores synthetic sensor events in a SQLite outbox and
+delivers them over MQTT. A Python backend acknowledges each event after durable
+storage. Stable event identities and canonical SHA-256 fingerprints make retries
+idempotent and distinguish conflicting data under the same identity.
+
+The local backend uses PostgreSQL. An AWS adapter uses IoT Core, Lambda and
+DynamoDB with the same event and acknowledgement contract.
 
 ## Build and test
 
-Ubuntu 24.04 prerequisites: `g++`, `cmake`, `libssl-dev`, `nlohmann-json3-dev`,
-`libsqlite3-dev`, `libmosquitto-dev`, `mosquitto-clients`, Python 3.12; Docker Compose is optional.
+On Ubuntu 24.04, as a normal user:
 
 ```sh
-python3 -m venv .venv
-.venv/bin/pip install -r ingestion/requirements.txt
+scripts/bootstrap_ubuntu.sh
+env -u PYTHONPATH -u PYTHONHOME scripts/verify_local.sh
+```
+
+The bootstrap installs C++ and Python dependencies, Mosquitto and PostgreSQL 16.
+The test runner starts its own services on ephemeral loopback ports and runs
+host tests, MQTT/PostgreSQL fault scenarios, sanitizers and measurements.
+Results go to ignored `results/`. Exit 77 identifies an environment limitation.
+See [testing](docs/TESTING.md) for individual checks and their scope.
+
+For a build and host tests only:
+
+```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake --build build -j2
 ctest --test-dir build --output-on-failure
 .venv/bin/python tests/cli_checks.py --gateway build/gateway
-PYTHONPATH=ingestion python3 -m unittest discover -s tests -p 'test_*.py'
+PYTHONPATH=ingestion .venv/bin/python -m unittest discover -s tests -p 'test_*.py'
 ```
 
-The C++ and Python implementations check the same canonical JSON/SHA-256 fixtures.
-See [the wire contract](docs/CONTRACT.md) and [outbox policy](docs/OUTBOX.md).
+Dependency and optional Compose image pins are in [versions.json](versions.json).
 
-```sh
-mkdir -p .runtime
-build/gateway enqueue --db .runtime/sensor-a.db --device sensor-a --count 3
-build/gateway status --db .runtime/sensor-a.db --device sensor-a
+## Data path
+
+```mermaid
+flowchart TD
+  G["Gateway + SQLite outbox"] -->|events| B["Mosquitto"]
+  B -->|shared subscription| W["Python workers"]
+  W -->|transaction| P["PostgreSQL"]
+  W -->|ACK after commit| B
+  B -->|matching ACK| G
+  G -->|mutual TLS| I["AWS IoT Core"]
+  I -->|IoT Rule| L["Lambda"]
+  L -->|conditional write| D["DynamoDB"]
+  L -->|durable ACK| I
+  I -->|matching ACK| G
 ```
 
-Enqueue returns one JSON result per input; exit 3 means at least one input was
-rejected. Status reads durable state.
+See the [wire contract](docs/CONTRACT.md), [outbox policy](docs/OUTBOX.md),
+[delivery loop](docs/DELIVERY.md) and [database queries](docs/DATABASE.md).
 
-## Local services and delivery
+## Reliability model
+
+- Acceptance is the SQLite transaction that stores an event and advances its
+  sequence. Rejected input consumes no sequence; committed events survive restart.
+- MQTT QoS 1 PUBACK confirms broker receipt. A matching application `stored` or
+  `duplicate` ACK is required before deleting an outbox row.
+- Backend records are immutable. Identical retries are duplicates; different data
+  under an existing identity is a conflict. Terminal errors remain inspectable.
+- Default outbox capacity is 4096 rows / 1 MiB payload, including terminal rows.
+  Quarantine holds 64 rows. Application and transport windows are bounded;
+  accepted records are never evicted automatically.
+- Delivery is at least once. Eventual drain requires connectivity, backend
+  availability, storage and retained deduplication identities. Delivery order and
+  distributed exactly-once processing are not guaranteed.
+
+SQLite uses WAL and FULL synchronization. Database-page and payload limits do not
+bound the total filesystem footprint; WAL, indexes and external readers matter.
+Use a filesystem quota for a hard disk cap. Process crash recovery and host power
+loss are different failure modes.
+
+## Local demo and diagnostics
+
+With Docker Engine and Compose available:
 
 ```sh
 python3 scripts/local_setup.py
 docker compose up -d --build
-```
-
-Set `MQTT_USERNAME=sensor-a` and `MQTT_PASSWORD` from the generated private
-`.runtime/credentials.json`, then:
-
-```sh
-build/gateway run --db .runtime/sensor-a.db --device sensor-a --port 18883 --count 10 --duration-ms 15000
+.venv/bin/python scripts/run_demo.py --count 10
+python3 scripts/telemetry_status.py status --db .runtime/sensor-a.db
 docker compose down -v
 ```
 
-The worker inserts an immutable event and publishes `stored` after PostgreSQL
-COMMIT. A repeated identical delivery receives `duplicate`. A database error
-produces no success ACK. See [delivery ownership and limits](docs/DELIVERY.md).
-Two independent workers share the event subscription and arbitrate through the
-database primary key; see [database and query commands](docs/DATABASE.md).
-Use the native PostgreSQL tests to exercise database durability and queries.
+Setup creates disposable credentials under `.runtime/`; the demo loads them
+without printing them. Services bind loopback ports 18883/15432. Removing the
+database volume ends deduplication retention.
 
-The transport-only check uses a real isolated Mosquitto broker and deliberately
-injected ACKs; it does not claim PostgreSQL verification:
+The gateway supports `enqueue`, `run`, `status`, `new-stream` and terminal record
+inspection. `run --replay FILE` accepts bounded measurement-only NDJSON and
+allocates new identities; outbox retries preserve existing identities.
+See the [operator runbook](docs/RUNBOOK.md) and
+[measurement procedure](docs/MEASUREMENTS.md).
 
-```sh
-.venv/bin/python tests/mqtt_smoke.py --gateway build/gateway
-.venv/bin/python tests/broker_faults.py --gateway build/gateway
-```
+## AWS deployment
 
-The complete native runner is `scripts/verify_local.sh`; see
-[verification scope](docs/TESTING.md). Use a normal user for
-PostgreSQL; initdb refuses root.
+The SAM template defines scoped IoT policies, conditional DynamoDB writes, an
+Errors alarm, an asynchronous Lambda failure destination and short log retention.
+Cleanup checks the account, region, registered StackId and recorded resource
+ownership before deleting the deployment.
 
-Use `python3 scripts/telemetry_status.py status --db .runtime/sensor-a.db` for
-read-only backlog and file-size diagnostics. See the [runbook](docs/RUNBOOK.md)
-and [measurement boundaries](docs/MEASUREMENTS.md).
-
-The GitHub workflow configures real native-service verification and offline SAM
-checks. Hosted CI and AWS deployment have not been run.
+The [AWS runbook](cloud/README.md) covers a bounded Frankfurt deployment with two
+synthetic devices, mutual TLS, topic isolation, storage acknowledgements,
+duplicate/conflict handling, Lambda failures and independent teardown checks.
+Offline SDK tests and SAM lint/build exercise the adapter and infrastructure
+without deploying. Live results are pending; no AWS deployment result is recorded
+in this source state.

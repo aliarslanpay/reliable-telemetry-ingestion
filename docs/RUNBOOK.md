@@ -31,8 +31,7 @@ failures. Use a filesystem quota for a hard total disk limit.
 Reproduce the operational drill with `.venv/bin/python tests/load.py --gateway
 build/gateway --count 200`. It stops both owned workers, accepts a bounded backlog,
 observes an age alert (exit 8), captures diagnosis, restores workers, reconciles
-accepted IDs and checks alert recovery (exit 0). The real PostgreSQL drill is
-blocked in the development runtime.
+accepted IDs and checks alert recovery (exit 0). Recovery timing is written to the load result for each run.
 
 For Compose, `docker compose stop worker-1 worker-2` / `docker compose start
 worker-1 worker-2` reproduce the same interruption. `docker compose down -v` removes
